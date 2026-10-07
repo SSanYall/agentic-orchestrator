@@ -24,8 +24,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // ownershipSchemaVersion is the on-disk schema of OwnershipRecord.
@@ -182,24 +180,25 @@ func AcquireLease(exec Executable, rec OwnershipRecord) (*Lease, error) {
 	path := LeasePath(exec.Path)
 	// O_CLOEXEC is load-bearing: the lease fd stays close-on-exec until the
 	// final handoff window clears it explicitly via ClearCLOEXEC.
-	fd, err := unix.Open(path, unix.O_CREAT|unix.O_RDWR|unix.O_CLOEXEC, 0o600)
+	fd, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open lease file: %w", err)
 	}
-	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		_ = unix.Close(fd)
-		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
+	fdInt := int(fd.Fd())
+	if err := lockFD(fdInt); err != nil {
+		_ = fd.Close()
+		if errors.Is(err, errLockBusy) {
 			record, _ := ReadOwnershipRecord(exec.Path)
 			return nil, &LeaseHeldError{Record: record}
 		}
 		return nil, fmt.Errorf("acquire lease: %w", err)
 	}
 	if err := writeOwnershipRecord(exec.Path, rec); err != nil {
-		_ = unix.Flock(fd, unix.LOCK_UN)
-		_ = unix.Close(fd)
+		_ = unlockFD(fdInt)
+		_ = fd.Close()
 		return nil, err
 	}
-	return &Lease{fd: fd, record: rec, path: path}, nil
+	return &Lease{fd: fdInt, record: rec, path: path}, nil
 }
 
 // FD exposes the raw lease descriptor for exec handoff control.
@@ -237,8 +236,8 @@ func (l *Lease) Close() error {
 	if l == nil || l.fd < 0 {
 		return nil
 	}
-	errUnlock := unix.Flock(l.fd, unix.LOCK_UN)
-	errClose := unix.Close(l.fd)
+	errUnlock := unlockFD(l.fd)
+	errClose := closeFD(l.fd)
 	l.fd = -1
 	return errors.Join(errUnlock, errClose)
 }
@@ -250,7 +249,7 @@ func (l *Lease) Close() error {
 // descriptor. Exactly one owner must close the descriptor: across a real
 // exec the pre-exec owner no longer exists, so the adopted Lease is it.
 func AdoptLease(fd int, rec OwnershipRecord) (*Lease, error) {
-	if _, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil {
+	if _, err := isCloseOnExec(fd); err != nil {
 		return nil, fmt.Errorf("adopt lease fd %d is not open: %w", fd, err)
 	}
 	rec.SchemaVersion = ownershipSchemaVersion
@@ -298,8 +297,7 @@ func ProcessAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	err := unix.Kill(pid, 0)
-	return err == nil || errors.Is(err, unix.EPERM)
+	return processAlive(pid)
 }
 
 // writeOwnershipRecord atomically writes rec with owner-only permissions
@@ -352,9 +350,9 @@ func AcquireRuntimeUpdateLock(runtimeDir string) (*RuntimeUpdateLock, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open runtime update lock: %w", err)
 	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := lockFD(int(f.Fd())); err != nil {
 		_ = f.Close()
-		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
+		if errors.Is(err, errLockBusy) {
 			return nil, fmt.Errorf("%w: %s", ErrRuntimeUpdateLockHeld, RuntimeUpdateLockPath(runtimeDir))
 		}
 		return nil, fmt.Errorf("acquire runtime update lock: %w", err)
@@ -367,7 +365,7 @@ func (l *RuntimeUpdateLock) Close() error {
 	if l == nil || l.file == nil {
 		return nil
 	}
-	errUnlock := unix.Flock(int(l.file.Fd()), unix.LOCK_UN)
+	errUnlock := unlockFD(int(l.file.Fd()))
 	errClose := l.file.Close()
 	l.file = nil
 	return errors.Join(errUnlock, errClose)
@@ -391,13 +389,13 @@ func LiveHandoff(execPath string) (bool, Receipt, error) {
 		return false, receipt, fmt.Errorf("open lease file: %w", err)
 	}
 	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
+	if err := lockFD(int(f.Fd())); err != nil {
+		if errors.Is(err, errLockBusy) {
 			return found && receipt.ActionablePending(), receipt, nil
 		}
 		return false, receipt, fmt.Errorf("probe lease: %w", err)
 	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_UN); err != nil {
+	if err := unlockFD(int(f.Fd())); err != nil {
 		return false, receipt, fmt.Errorf("release lease probe: %w", err)
 	}
 	return false, receipt, nil

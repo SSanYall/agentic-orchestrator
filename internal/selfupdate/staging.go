@@ -133,8 +133,8 @@ func validatedOwnedFilePaths(txDir string) ([]string, error) {
 		if id := identityFromInfo(info); id.UID != os.Geteuid() {
 			return nil, fmt.Errorf("refusing unsafe cleanup: %s is owned by uid %d", path, id.UID)
 		}
-		if st, ok := info.Sys().(*syscallStat); ok && st.Nlink != 1 {
-			return nil, fmt.Errorf("refusing unsafe cleanup: %s has %d hard links", path, st.Nlink)
+		if nlink, ok := fileNLink(info); ok && nlink != 1 {
+			return nil, fmt.Errorf("refusing unsafe cleanup: %s has %d hard links", path, nlink)
 		}
 		paths = append(paths, path)
 	}

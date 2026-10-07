@@ -60,5 +60,9 @@ export function unpackedExecutablePath(
     const unpackedDir = arch === 'arm64' ? 'linux-arm64-unpacked' : 'linux-unpacked';
     return join(desktopDir, 'dist', unpackedDir, 'agentico');
   }
+  if (platform === 'win32') {
+    const unpackedDir = arch === 'arm64' ? 'win-arm64-unpacked' : 'win-unpacked';
+    return join(desktopDir, 'dist', unpackedDir, 'Agentico.exe');
+  }
   throw new Error(`unsupported packaged app host: ${platform}`);
 }

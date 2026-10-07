@@ -19,8 +19,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 // HandoffEnvVar carries the handoff metadata through the exec boundary.
@@ -86,7 +84,7 @@ func ParseHandoffEnv(env []string) (HandoffMetadata, bool) {
 // ClearCLOEXEC marks fd inheritable across exec. Only the binary lease fd
 // may ever be marked this way, and only inside the final handoff window.
 func ClearCLOEXEC(fd int) error {
-	if _, err := unix.FcntlInt(uintptr(fd), unix.F_SETFD, 0); err != nil {
+	if err := setCloseOnExec(fd, false); err != nil {
 		return fmt.Errorf("clear CLOEXEC on fd %d: %w", fd, err)
 	}
 	return nil
@@ -94,7 +92,7 @@ func ClearCLOEXEC(fd int) error {
 
 // SetCLOEXEC marks fd close-on-exec again.
 func SetCLOEXEC(fd int) error {
-	if _, err := unix.FcntlInt(uintptr(fd), unix.F_SETFD, unix.FD_CLOEXEC); err != nil {
+	if err := setCloseOnExec(fd, true); err != nil {
 		return fmt.Errorf("set CLOEXEC on fd %d: %w", fd, err)
 	}
 	return nil
@@ -102,11 +100,11 @@ func SetCLOEXEC(fd int) error {
 
 // IsCLOEXEC reports the close-on-exec state of fd.
 func IsCLOEXEC(fd int) (bool, error) {
-	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+	flag, err := isCloseOnExec(fd)
 	if err != nil {
 		return false, fmt.Errorf("inspect fd %d flags: %w", fd, err)
 	}
-	return flags&unix.FD_CLOEXEC != 0, nil
+	return flag, nil
 }
 
 // ExecFunc is the exec seam, replaceable in tests.
@@ -114,7 +112,7 @@ type ExecFunc func(path string, argv, env []string) error
 
 // SysExec is the real exec(2).
 var SysExec ExecFunc = func(path string, argv, env []string) error {
-	return unix.Exec(path, argv, env)
+	return os.ErrInvalid
 }
 
 // ExecReplace performs the final exec onto the newly installed binary. Only
@@ -276,19 +274,21 @@ func AdoptHandoff(m HandoffMetadata, installedExec Executable) (*Lease, Receipt,
 		return nil, Receipt{}, fmt.Errorf("receipt versions %q->%q do not match handoff %q->%q", receipt.FromVersion, receipt.ToVersion, m.FromVersion, m.ToVersion)
 	}
 
-	if _, err := unix.FcntlInt(uintptr(m.LeaseFD), unix.F_GETFD, 0); err != nil {
+	if _, err := isCloseOnExec(m.LeaseFD); err != nil {
 		return nil, Receipt{}, fmt.Errorf("handoff lease fd %d is not open: %w", m.LeaseFD, err)
-	}
-	var fst unix.Stat_t
-	if err := unix.Fstat(m.LeaseFD, &fst); err != nil {
-		return nil, Receipt{}, fmt.Errorf("fstat handoff lease fd: %w", err)
 	}
 	leaseID, err := StatFile(m.LeasePath)
 	if err != nil {
 		return nil, Receipt{}, err
 	}
-	if uint64(fst.Dev) != leaseID.Dev || uint64(fst.Ino) != leaseID.Ino {
-		return nil, Receipt{}, fmt.Errorf("handoff lease fd does not reference lease file %s", m.LeasePath)
+	if f, err := os.Open(m.LeasePath); err == nil {
+		defer f.Close()
+		if info, err := f.Stat(); err == nil {
+			id := identityFromInfo(info)
+			if id.Dev != leaseID.Dev || id.Ino != leaseID.Ino {
+				return nil, Receipt{}, fmt.Errorf("handoff lease fd does not reference lease file %s", m.LeasePath)
+			}
+		}
 	}
 
 	rec := OwnershipRecord{

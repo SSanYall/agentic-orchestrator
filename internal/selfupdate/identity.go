@@ -21,7 +21,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 // FileIdentity is the inode-level identity of a file. Dev/Ino/Size survive
@@ -48,11 +47,11 @@ func identityFromInfo(info os.FileInfo) FileIdentity {
 		Mode: uint32(info.Mode().Perm()),
 		Size: info.Size(),
 	}
-	if st, ok := info.Sys().(*syscall.Stat_t); ok {
-		id.Dev = uint64(st.Dev)
-		id.Ino = uint64(st.Ino)
-		id.UID = int(st.Uid)
-		id.GID = int(st.Gid)
+	if dev, ino, uid, gid, ok := fileIdentity(info); ok {
+		id.Dev = dev
+		id.Ino = ino
+		id.UID = uid
+		id.GID = gid
 	}
 	return id
 }

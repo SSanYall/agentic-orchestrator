@@ -99,12 +99,12 @@ function resolveTarget() {
     }
     return { os: 'darwin', arch: 'universal' };
   }
-  if (platform === 'linux') {
+  if (platform === 'linux' || platform === 'win32') {
     const arch = process.env.AGENTICO_PACKAGE_ARCH ?? (process.arch === 'arm64' ? 'arm64' : 'x64');
     if (!(arch in GOARCH_BY_ARCH)) {
       throw new Error(`unsupported AGENTICO_PACKAGE_ARCH=${arch}; expected x64 or arm64`);
     }
-    return { os: 'linux', arch };
+    return { os: platform === 'win32' ? 'win32' : 'linux', arch };
   }
   throw new Error(`unsupported packaging host platform: ${platform}`);
 }
@@ -121,7 +121,7 @@ export function main() {
 
   rmSync(resourcesDir, { recursive: true, force: true });
   mkdirSync(binDir, { recursive: true });
-  const binaryPath = join(binDir, 'agentico');
+  const binaryPath = join(binDir, target.os === 'win32' ? 'agentico.exe' : 'agentico');
 
   if (target.os === 'darwin') {
     // A true universal binary: build both slices, then lipo them together so
@@ -141,7 +141,7 @@ export function main() {
     }
   } else {
     goBuild({
-      goos: 'linux',
+      goos: target.os === 'win32' ? 'windows' : 'linux',
       goarch: GOARCH_BY_ARCH[target.arch],
       version,
       revision,

@@ -437,7 +437,7 @@ func classifyAttempt(
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = req.WorkDir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setProcessGroup(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return attemptResult{result: failedResult(OutcomeProviderError, "provider stdin setup failed")}
@@ -1003,7 +1003,7 @@ func terminateAndWait(ctx context.Context, cmd *exec.Cmd, readDone <-chan struct
 		return
 	}
 	pgid := cmd.Process.Pid
-	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	_ = killProcessGroup(pgid, syscall.SIGTERM)
 
 	waitDone := make(chan struct{})
 	go func() {
@@ -1018,10 +1018,10 @@ func terminateAndWait(ctx context.Context, cmd *exec.Cmd, readDone <-chan struct
 	select {
 	case <-waitDone:
 	case <-timer.C:
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		_ = killProcessGroup(pgid, syscall.SIGKILL)
 		<-waitDone
 	case <-ctx.Done():
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		_ = killProcessGroup(pgid, syscall.SIGKILL)
 		<-waitDone
 	}
 }

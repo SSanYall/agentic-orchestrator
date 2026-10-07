@@ -21,8 +21,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -74,9 +72,9 @@ func Acquire(runtimeDir, stateDir, configPath, version string) (*Lock, bool, Own
 		return nil, false, Owner{}, fmt.Errorf("open instance lock: %w", err)
 	}
 
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := lockExclusive(f); err != nil {
 		_ = f.Close()
-		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
+		if errors.Is(err, errLockBusy) {
 			owner, _ := ReadOwner(runtimeDir)
 			return nil, false, owner, nil
 		}
@@ -92,7 +90,7 @@ func Acquire(runtimeDir, stateDir, configPath, version string) (*Lock, bool, Own
 		Version:   version,
 	}
 	if err := writeOwner(runtimeDir, owner); err != nil {
-		_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
+		_ = unlockExclusive(f)
 		_ = f.Close()
 		return nil, false, Owner{}, err
 	}
@@ -115,7 +113,7 @@ func (l *Lock) Close() error {
 	if l == nil || l.file == nil {
 		return nil
 	}
-	errUnlock := unix.Flock(int(l.file.Fd()), unix.LOCK_UN)
+	errUnlock := unlockExclusive(l.file)
 	errClose := l.file.Close()
 	l.file = nil
 	return errors.Join(errUnlock, errClose)
@@ -157,10 +155,4 @@ func writeOwner(runtimeDir string, owner Owner) error {
 	return nil
 }
 
-func currentPGID() int {
-	pgid, err := unix.Getpgid(0)
-	if err != nil {
-		return 0
-	}
-	return pgid
-}
+var errLockBusy = errors.New("lock busy")

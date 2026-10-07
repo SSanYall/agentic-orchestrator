@@ -108,12 +108,14 @@ describe('validateBuildIdentity', () => {
     }
   });
 
-  it('rejects unsupported os/arch values', () => {
-    expect(validateBuildIdentity({ ...complete, os: 'win32' }).ok).toBe(false);
+  it('accepts win32 identities and rejects unsupported os/arch values', () => {
+    expect(validateBuildIdentity({ ...complete, os: 'win32', arch: 'x64' }).ok).toBe(true);
     expect(validateBuildIdentity({ ...complete, arch: 'mips' }).ok).toBe(false);
-    // darwin packages are universal-only; linux never is.
+    // darwin packages are universal-only; linux and win32 never are.
     expect(validateBuildIdentity({ ...complete, os: 'darwin', arch: 'x64' }).ok).toBe(false);
     expect(validateBuildIdentity({ ...complete, os: 'linux', arch: 'universal' }).ok).toBe(false);
+    expect(validateBuildIdentity({ ...complete, os: 'win32', arch: 'universal' }).ok).toBe(false);
+    expect(validateBuildIdentity({ ...complete, os: 'freebsd', arch: 'x64' }).ok).toBe(false);
   });
 
   it('rejects an unparseable built_at timestamp', () => {
@@ -258,6 +260,18 @@ describe('parseOpenApiInfoVersion', () => {
       '          type: string',
     ].join('\n');
     expect(parseOpenApiInfoVersion(yaml)).toBe('v2');
+  });
+
+  it('handles CRLF line endings in the OpenAPI spec', () => {
+    const yaml = [
+      'openapi: 3.1.0',
+      'info:',
+      '  title: Agentico Server API',
+      '  version: v1',
+      '  description: Loopback REST and SSE API.',
+      'paths: {}',
+    ].join('\r\n');
+    expect(parseOpenApiInfoVersion(yaml)).toBe('v1');
   });
 
   it('throws when info.version cannot be found', () => {

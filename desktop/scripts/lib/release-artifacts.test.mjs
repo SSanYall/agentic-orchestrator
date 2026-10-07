@@ -119,6 +119,12 @@ describe('resolvePackageTarget', () => {
     expect(resolvePackageTarget('darwin', 'arm64')).toEqual({ os: 'darwin', arch: 'universal' });
   });
 
+  it('maps Windows packages to the native target architecture', () => {
+    expect(resolvePackageTarget('win32', 'x64')).toEqual({ os: 'win32', arch: 'x64' });
+    expect(resolvePackageTarget('win32', 'arm64')).toEqual({ os: 'win32', arch: 'arm64' });
+    expect(resolvePackageTarget('win32', 'x64', 'arm64')).toEqual({ os: 'win32', arch: 'arm64' });
+  });
+
   it('rejects unknown package architectures', () => {
     expect(() => resolvePackageTarget('linux', 'x64', 'ia32')).toThrow(
       /unsupported package architecture: ia32/,

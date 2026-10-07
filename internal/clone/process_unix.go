@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Copyright 2026 DoorDash, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +14,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !unix && !windows
+package clone
 
-package agent
+import (
+	"os/exec"
+	"syscall"
+)
 
-// pathWritableByUser conservatively reports true on platforms without the
-// verification sandbox, so escalation safety fails closed to the user gate.
-// The ladder never runs here: commands are already unsandboxed.
-func pathWritableByUser(string) bool {
-	return true
+func setProcessGroup(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+}
+
+func killProcessGroup(pgid int, sig syscall.Signal) error {
+	if pgid <= 0 {
+		return nil
+	}
+	return syscall.Kill(-pgid, sig)
+}
+
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	return syscall.Kill(pid, 0) == nil || syscall.Kill(pid, 0) == syscall.EPERM
+}
+
+func groupAlive(pgid int) bool {
+	if pgid <= 0 {
+		return false
+	}
+	return syscall.Kill(-pgid, 0) == nil || syscall.Kill(-pgid, 0) == syscall.EPERM
 }

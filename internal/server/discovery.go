@@ -28,7 +28,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -177,15 +176,12 @@ func validateDiscoveryFileSecurity(path string) error {
 	if info.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("discovery file is readable or writable by non-owner")
 	}
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
+	uid, ok := fileOwnerUID(info)
 	if !ok {
 		return fmt.Errorf("discovery owner metadata unavailable")
 	}
-	if int(stat.Uid) != os.Geteuid() {
-		return fmt.Errorf("discovery file is owned by uid %d", stat.Uid)
+	if runtime.GOOS != "windows" && uid != os.Geteuid() {
+		return fmt.Errorf("discovery file is owned by uid %d", uid)
 	}
 	return nil
 }

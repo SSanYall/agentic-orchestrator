@@ -16,9 +16,7 @@ package git
 
 import (
 	"context"
-	"os"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -33,13 +31,8 @@ func HasHead(dir string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), HeadProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--verify", "HEAD")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return os.ErrProcessDone
-	}
+	setProcessGroup(cmd)
+	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 	cmd.WaitDelay = time.Second
 	return cmd.Run() == nil
 }

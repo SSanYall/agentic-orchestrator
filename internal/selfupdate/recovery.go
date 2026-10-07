@@ -21,11 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 )
-
-// syscallStat aliases the platform stat structure for link-count checks.
-type syscallStat = syscall.Stat_t
 
 // RecoveryAction is the mandatory recovery decision for one launch.
 type RecoveryAction string
@@ -145,8 +141,8 @@ func validateOwnerOnlyRegularFile(path string, mode uint32, requireNLinkOne bool
 		return refuse("%s is owned by uid %d; expected current effective uid %d", path, id.UID, os.Geteuid())
 	}
 	if requireNLinkOne && info.Sys() != nil {
-		if st, ok := info.Sys().(*syscallStat); ok && st.Nlink != 1 {
-			return refuse("%s has %d hard links; refusing a substituted object", path, st.Nlink)
+		if nlink, ok := fileNLink(info); ok && nlink != 1 {
+			return refuse("%s has %d hard links; refusing a substituted object", path, nlink)
 		}
 	}
 	return nil
@@ -356,8 +352,8 @@ func lstatOwnedRegular(path string) (FileIdentity, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return FileIdentity{}, fmt.Errorf("%s is not a regular file", path)
 	}
-	if st, ok := info.Sys().(*syscallStat); ok && st.Nlink != 1 {
-		return FileIdentity{}, fmt.Errorf("%s has %d hard links", path, st.Nlink)
+	if nlink, ok := fileNLink(info); ok && nlink != 1 {
+		return FileIdentity{}, fmt.Errorf("%s has %d hard links", path, nlink)
 	}
 	return identityFromInfo(info), nil
 }
@@ -383,8 +379,8 @@ func validateBackupForRestore(execPath string, r Receipt) error {
 	if id.UID != os.Geteuid() {
 		return refuse("rollback backup %s is owned by uid %d; expected current effective uid %d", r.BackupPath, id.UID, os.Geteuid())
 	}
-	if st, ok := info.Sys().(*syscallStat); ok && st.Nlink != 1 {
-		return refuse("rollback backup %s has %d hard links", r.BackupPath, st.Nlink)
+	if nlink, ok := fileNLink(info); ok && nlink != 1 {
+		return refuse("rollback backup %s has %d hard links", r.BackupPath, nlink)
 	}
 	digest, err := DigestFile(r.BackupPath)
 	if err != nil {

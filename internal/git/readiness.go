@@ -19,10 +19,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -72,13 +70,8 @@ func (p *ReadinessProber) run(parent context.Context, args ...string) ([]byte, e
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, p.executable, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return os.ErrProcessDone
-	}
+	setProcessGroup(cmd)
+	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 	cmd.WaitDelay = time.Second
 	var stdout, stderr probeOutput
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -35,9 +35,12 @@ describe('unpackedExecutablePath', () => {
     );
   });
 
-  it('rejects unsupported hosts', () => {
-    expect(() => unpackedExecutablePath('/repo/desktop', 'win32', 'x64')).toThrow(
-      /unsupported packaged app host: win32/,
+  it('resolves Windows unpacked dirs', () => {
+    expect(unpackedExecutablePath('/repo/desktop', 'win32', 'x64')).toBe(
+      '/repo/desktop/dist/win-unpacked/Agentico.exe',
+    );
+    expect(unpackedExecutablePath('/repo/desktop', 'win32', 'arm64')).toBe(
+      '/repo/desktop/dist/win-arm64-unpacked/Agentico.exe',
     );
   });
 });

@@ -28,7 +28,12 @@ export function shouldRequireUnpackedApp({ unpackedOnly, artifactsOnly }) {
 /** Build the target-specific paths and distributable inventory for package verification. */
 export function createPackageVerificationPlan({ desktopDir, target, files }) {
   const distDir = join(desktopDir, 'dist');
-  const formats = target.os === 'darwin' ? ['dmg'] : ['AppImage', 'deb'];
+  const formats =
+    target.os === 'darwin'
+      ? ['dmg']
+      : target.os === 'linux'
+        ? ['AppImage', 'deb']
+        : ['exe'];
   return Object.freeze({
     target,
     artifacts: Object.freeze(
@@ -75,6 +80,22 @@ export function inspectExecutableArchitecture(bytes) {
     const architectures = elfArchitecture(machine);
     return architectures.length === 1
       ? { format: 'ELF', architectures }
+      : { format: 'unknown', architectures: [] };
+  }
+
+  if (buffer.length >= 64 && buffer[0] === 0x4d && buffer[1] === 0x5a) {
+    const peOffset = buffer.readUInt32LE(0x3c);
+    if (peOffset + 24 > buffer.length) {
+      return { format: 'unknown', architectures: [] };
+    }
+    const signature = buffer.subarray(peOffset, peOffset + 4);
+    if (!signature.equals(Buffer.from([0x50, 0x45, 0x00, 0x00]))) {
+      return { format: 'unknown', architectures: [] };
+    }
+    const machine = buffer.readUInt16LE(peOffset + 4);
+    const architectures = peArchitecture(machine);
+    return architectures.length === 1
+      ? { format: 'PE', architectures }
       : { format: 'unknown', architectures: [] };
   }
 
@@ -147,6 +168,13 @@ export function executableArchitectureError(evidence, target) {
     }
     return null;
   }
+  if (target.os === 'win32') {
+    const expected = target.arch === 'x64' ? 'amd64' : 'arm64';
+    if (evidence?.format !== 'PE' || actual.length !== 1 || actual[0] !== expected) {
+      return `Windows ${target.arch} executable requires ${expected}, found ${describeArchitectures(evidence)}`;
+    }
+    return null;
+  }
   const expected = target.arch === 'x64' ? 'amd64' : 'arm64';
   if (evidence?.format !== 'ELF' || actual.length !== 1 || actual[0] !== expected) {
     return `Linux ${target.arch} executable requires ${expected}, found ${describeArchitectures(evidence)}`;
@@ -170,6 +198,12 @@ function elfArchitecture(machine) {
 function machOArchitecture(cpuType) {
   if (cpuType === 0x01000007) return ['amd64'];
   if (cpuType === 0x0100000c) return ['arm64'];
+  return [];
+}
+
+function peArchitecture(machine) {
+  if (machine === 0x8664) return ['amd64'];
+  if (machine === 0xaa64) return ['arm64'];
   return [];
 }
 

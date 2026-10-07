@@ -148,14 +148,14 @@ func (r *realRunner) Start(spec RunSpec) (RunHandle, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), deadline)
 	cmd := exec.CommandContext(ctx, r.gitBin, "clone", "--progress", spec.Remote, spec.Staging)
 	cmd.Env = append(cloneEnvironment(), spec.Env...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setProcessGroup(cmd)
 	// Hard-stop the whole group on deadline; WaitDelay bounds the wait so
 	// descendants holding pipes open cannot stall the reap.
 	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if cmd.Process == nil {
+			return os.ErrProcessDone
 		}
-		return os.ErrProcessDone
+		return killProcessGroup(cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = time.Second
 	h := &realHandle{
@@ -304,12 +304,12 @@ func (h *realHandle) Wait() RunResult {
 // draining within their bound.
 func (h *realHandle) Terminate() {
 	h.termOnce.Do(func() {
-		_ = syscall.Kill(-h.pgid, syscall.SIGTERM)
+			_ = killProcessGroup(h.pgid, syscall.SIGTERM)
 		select {
 		case <-h.done:
 			return
 		case <-time.After(2 * time.Second):
-			_ = syscall.Kill(-h.pgid, syscall.SIGKILL)
+			_ = killProcessGroup(h.pgid, syscall.SIGKILL)
 		}
 	})
 }
@@ -343,20 +343,10 @@ func ClassifyFailure(res RunResult) string {
 }
 
 // IsProcessAlive reports whether a process (by pid) currently exists.
-func IsProcessAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	return syscall.Kill(pid, 0) == nil
-}
+func IsProcessAlive(pid int) bool { return processAlive(pid) }
 
 // GroupAlive reports whether any process in the group exists.
-func GroupAlive(pgid int) bool {
-	if pgid <= 0 {
-		return false
-	}
-	return syscall.Kill(-pgid, 0) == nil
-}
+func GroupAlive(pgid int) bool { return groupAlive(pgid) }
 
 // VerifyProcessIdentity re-reads the current process start identity for pid
 // and reports whether it matches the recorded identity. PID, path, or

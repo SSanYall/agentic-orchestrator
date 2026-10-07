@@ -19,11 +19,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -201,16 +199,8 @@ func (r ExecBranchProbeRunner) Run(ctx context.Context, repoPath string, args []
 	}
 	cmd := exec.CommandContext(ctx, executable, gitArgs...)
 	cmd.Env = nonInteractiveGitEnv(cmd.Environ())
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return os.ErrProcessDone
-		}
-		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); !errors.Is(err, syscall.ESRCH) {
-			return err
-		}
-		return os.ErrProcessDone
-	}
+	setProcessGroup(cmd)
+	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 	cmd.WaitDelay = time.Second
 	stdout := &limitedDrainWriter{limit: diagnosticLimit}
 	stderr := &limitedDrainWriter{limit: diagnosticLimit}

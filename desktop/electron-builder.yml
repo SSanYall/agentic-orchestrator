@@ -82,3 +82,10 @@ deb:
 # name (productName-version.AppImage) lacks.
 appImage:
   artifactName: ${productName}-${arch}.${ext}
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+  artifactName: ${productName}-${arch}.${ext}

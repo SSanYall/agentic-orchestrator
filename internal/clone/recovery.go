@@ -220,7 +220,7 @@ func (s *Service) terminateRecordedProcess(cur *Record) (stopped, uncertain bool
 	if !VerifyProcessIdentity(pid, cur.Process.StartIdentity) {
 		return false, true
 	}
-	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	_ = killProcessGroup(pgid, syscall.SIGTERM)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if !IsProcessAlive(pid) && !GroupAlive(pgid) {
@@ -228,7 +228,7 @@ func (s *Service) terminateRecordedProcess(cur *Record) (stopped, uncertain bool
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	_ = killProcessGroup(pgid, syscall.SIGKILL)
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if !IsProcessAlive(pid) && !GroupAlive(pgid) {

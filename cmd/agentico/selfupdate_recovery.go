@@ -29,7 +29,6 @@ import (
 	"github.com/doordash-oss/agentic-orchestrator/internal/errcat"
 	"github.com/doordash-oss/agentic-orchestrator/internal/selfupdate"
 	serverruntime "github.com/doordash-oss/agentic-orchestrator/internal/server"
-	"golang.org/x/sys/unix"
 )
 
 // defaultStartupDeadline bounds how long an adopted target image may take to
@@ -157,10 +156,7 @@ type bootRecoveryResult struct {
 // live holder blocks: recovery authority is never stolen, and a competing
 // launch must fail rather than wait unbounded.
 func acquireRecoveryLease(exec selfupdate.Executable, runtimeDir, stateDir, configPath string) (*selfupdate.Lease, error) {
-	pgid := 0
-	if g, err := unix.Getpgid(0); err == nil {
-		pgid = g
-	}
+	pgid := os.Getpid()
 	return selfupdate.AcquireLease(exec, selfupdate.OwnershipRecord{
 		RuntimeDir:       runtimeDir,
 		StateDir:         stateDir,

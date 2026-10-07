@@ -27,6 +27,7 @@ limitations under the License.
 // electron-builder arch flag move together so packages can never carry a
 // mismatched server.
 import { execFileSync } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -91,6 +92,10 @@ if (process.platform === 'linux') {
   linuxPackageArch =
     process.env.AGENTICO_PACKAGE_ARCH ?? (process.arch === 'arm64' ? 'arm64' : 'x64');
   builderArgs.push(linuxPackageArch === 'arm64' ? '--arm64' : '--x64');
+} else if (process.platform === 'win32') {
+  const winPackageArch =
+    process.env.AGENTICO_PACKAGE_ARCH ?? (process.arch === 'arm64' ? 'arm64' : 'x64');
+  builderArgs.push('--win', winPackageArch === 'arm64' ? '--arm64' : '--x64');
 }
 
 // electron-builder skips macOS signing on pull-request builds unless forced.
@@ -101,6 +106,7 @@ process.env.CSC_FOR_PULL_REQUEST ??= 'true';
 
 run(process.execPath, [nodeBin('electron-vite', 'bin/electron-vite.js'), 'build']);
 run(process.execPath, [join(desktopDir, 'scripts', 'prepare-server.mjs')]);
+rmSync(join(desktopDir, 'dist'), { recursive: true, force: true });
 run(process.execPath, [nodeBin('electron-builder', 'cli.js'), ...builderArgs]);
 if (process.platform === 'linux' && !unpackedOnly) {
   const appImage = normalizeLinuxAppImage(join(desktopDir, 'dist'), linuxPackageArch);

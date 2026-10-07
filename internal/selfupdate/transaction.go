@@ -23,8 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // FileOps supplies filesystem and clock overrides shared by installation and
@@ -170,7 +168,7 @@ func SyncFile(path string) error {
 		return fmt.Errorf("open %s for sync: %w", path, err)
 	}
 	defer f.Close()
-	if err := unix.Fsync(int(f.Fd())); err != nil {
+	if err := syncFD(int(f.Fd())); err != nil {
 		return fmt.Errorf("fsync %s: %w", path, err)
 	}
 	return nil
@@ -183,7 +181,7 @@ func SyncDir(path string) error {
 		return fmt.Errorf("open dir %s for sync: %w", path, err)
 	}
 	defer f.Close()
-	if err := unix.Fsync(int(f.Fd())); err != nil {
+	if err := syncFD(int(f.Fd())); err != nil {
 		return fmt.Errorf("fsync dir %s: %w", path, err)
 	}
 	return nil

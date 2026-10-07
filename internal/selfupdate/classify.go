@@ -19,8 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 // InstallKind is the classified installation method of the running
@@ -291,7 +289,7 @@ func DirWritable(dir string) bool {
 	if dir == "" {
 		return false
 	}
-	return unix.Access(dir, unix.W_OK) == nil
+	return accessWritable(dir)
 }
 
 // DescribeEligibility renders a one-line human summary for logs; it never

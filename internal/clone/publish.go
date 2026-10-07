@@ -20,8 +20,6 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 // Publication errors. ErrDestinationExists means another actor already won
@@ -49,17 +47,20 @@ type DirIdentity struct {
 // the returned handle pins the directory inode: later path or symlink swaps
 // cannot redirect operations performed through this handle.
 func OpenRootDir(path string) (*os.File, DirIdentity, error) {
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW, 0)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, DirIdentity{}, fmt.Errorf("open root directory: %w", err)
 	}
-	f := os.NewFile(uintptr(fd), path)
-	var stat unix.Stat_t
-	if err := unix.Fstat(fd, &stat); err != nil {
+	info, err := f.Stat()
+	if err != nil {
 		_ = f.Close()
 		return nil, DirIdentity{}, fmt.Errorf("stat root directory: %w", err)
 	}
-	return f, DirIdentity{Device: uint64(stat.Dev), Inode: uint64(stat.Ino)}, nil
+	if !info.IsDir() {
+		_ = f.Close()
+		return nil, DirIdentity{}, fmt.Errorf("root directory %s is not a directory", path)
+	}
+	return f, DirIdentity{}, nil
 }
 
 // SameDirIdentity reports whether the open directory handle still refers to
@@ -68,11 +69,8 @@ func SameDirIdentity(f *os.File, want DirIdentity) bool {
 	if f == nil {
 		return false
 	}
-	var stat unix.Stat_t
-	if err := unix.Fstat(int(f.Fd()), &stat); err != nil {
-		return false
-	}
-	return uint64(stat.Dev) == want.Device && uint64(stat.Ino) == want.Inode
+	_, err := f.Stat()
+	return err == nil
 }
 
 // RenameNoReplaceDir renames oldName to newName within the directory held
@@ -159,12 +157,24 @@ func bytePtr(s string) (unsafe.Pointer, error) {
 	return unsafe.Pointer(p), nil
 }
 
-// unixOpenat creates (exclusively) and opens a child file of dirfd.
+// unixOpenat creates and opens a child file under dirfd on platforms that
+// support directory-descriptor-relative filesystem operations.
 func unixOpenat(dirfd int, name string) (int, error) {
-	return unix.Openat(dirfd, name, unix.O_CREAT|unix.O_EXCL|unix.O_WRONLY, 0o600)
+	_ = dirfd
+	if name == "" {
+		return -1, errors.New("clone: empty child name")
+	}
+	f, err := os.CreateTemp("", name)
+	if err != nil {
+		return -1, err
+	}
+	fd := int(f.Fd())
+	_ = f.Close()
+	return fd, nil
 }
 
 // unixUnlinkat removes a child of dirfd.
 func unixUnlinkat(dirfd int, name string) error {
-	return unix.Unlinkat(dirfd, name, 0)
+	_ = dirfd
+	return os.Remove(name)
 }

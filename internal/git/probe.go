@@ -17,9 +17,7 @@ package git
 import (
 	"context"
 	"errors"
-	"os"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -52,13 +50,8 @@ func runProbeBounded(timeout time.Duration, args ...string) (out []byte, timedOu
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := probeGitCmd(ctx, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if killErr := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); !errors.Is(killErr, syscall.ESRCH) {
-			return killErr
-		}
-		return os.ErrProcessDone
-	}
+	setProcessGroup(cmd)
+	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 	// Backstop: stop waiting on inherited pipes if a descendant survives the kill.
 	cmd.WaitDelay = time.Second
 	out, err = cmd.Output()

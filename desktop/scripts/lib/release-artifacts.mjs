@@ -36,6 +36,7 @@ const GO_LINUX_TARBALLS = Object.freeze({
 });
 const RELEASE_TAG = /^v(\d+\.\d+\.\d+)$/;
 const LINUX_ARCHITECTURES = new Set(['x64', 'arm64']);
+const WINDOWS_ARCHITECTURES = new Set(['x64', 'arm64']);
 export const PACKAGE_VERIFICATION_RECEIPT_SCHEMA_VERSION = 2;
 
 /** Build the sole schema-v2 target receipt used by package verification and release fixtures. */
@@ -305,6 +306,13 @@ export function resolvePackageTarget(platform, processArch, packageArch) {
     }
     return Object.freeze({ os: 'darwin', arch: 'universal' });
   }
+  if (platform === 'win32') {
+    const arch = packageArch ?? processArch;
+    if (!WINDOWS_ARCHITECTURES.has(arch)) {
+      throw new Error(`unsupported package architecture: ${arch}`);
+    }
+    return Object.freeze({ os: 'win32', arch });
+  }
   if (platform !== 'linux') {
     throw new Error(`unsupported package platform: ${platform}`);
   }
@@ -511,6 +519,9 @@ function goBootstrapCommand(arch) {
 function matchesArtifact(file, target, format) {
   if (target.os === 'darwin' && target.arch === 'universal' && format === 'dmg') {
     return file === 'Agentico-mac-universal.dmg';
+  }
+  if (target.os === 'win32' && format === 'exe') {
+    return /^.*Agentico.*\.exe$/i.test(file) || /^.*agentico.*\.exe$/i.test(file);
   }
   if (target.os !== 'linux') return false;
   if (format === 'AppImage') {

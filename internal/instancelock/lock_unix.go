@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Copyright 2026 DoorDash, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +14,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !unix && !windows
+package instancelock
 
-package agent
+import (
+	"os"
 
-// pathWritableByUser conservatively reports true on platforms without the
-// verification sandbox, so escalation safety fails closed to the user gate.
-// The ladder never runs here: commands are already unsandboxed.
-func pathWritableByUser(string) bool {
-	return true
+	"golang.org/x/sys/unix"
+)
+
+func lockExclusive(f *os.File) error {
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
+			return errLockBusy
+		}
+		return err
+	}
+	return nil
+}
+
+func unlockExclusive(f *os.File) error {
+	return unix.Flock(int(f.Fd()), unix.LOCK_UN)
+}
+
+func currentPGID() int {
+	pgid, err := unix.Getpgid(0)
+	if err != nil {
+		return 0
+	}
+	return pgid
 }

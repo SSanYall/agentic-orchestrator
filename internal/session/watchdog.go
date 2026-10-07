@@ -524,7 +524,7 @@ func (s *Session) failFromWatchdog(reason string) {
 		_ = stdin.Close()
 	}
 	if pid > 0 {
-		_ = syscall.Kill(-pid, syscall.SIGTERM)
+		_ = killProcessGroup(pid, syscall.SIGTERM)
 		go s.killProcessGroupAfterGrace(pid, grace)
 	}
 }
@@ -538,5 +538,5 @@ func (s *Session) killProcessGroupAfterGrace(pid int, grace time.Duration) {
 		return
 	case <-time.After(grace):
 	}
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = killProcessGroup(pid, syscall.SIGKILL)
 }

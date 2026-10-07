@@ -33,9 +33,10 @@ export const IDENTITY_FIELDS = Object.freeze([
 ]);
 
 const OS_ARCHES = Object.freeze({
-  // macOS ships a single lipo'd universal DMG; linux ships per-arch artifacts.
+  // macOS ships a single lipo'd universal DMG; linux/win32 ship per-arch artifacts.
   darwin: Object.freeze(['universal']),
   linux: Object.freeze(['x64', 'arm64']),
+  win32: Object.freeze(['x64', 'arm64']),
 });
 
 function isNonEmptyString(value) {
@@ -170,7 +171,9 @@ export function crossCheckServerBinary(identity, probe) {
 
 /** Map a package identity to the single GOARCH its bundled server must carry. */
 export function expectedGoarchForIdentity(identity) {
-  if (identity.os === 'linux') return identity.arch === 'x64' ? 'amd64' : 'arm64';
+  if (identity.os === 'linux' || identity.os === 'win32') {
+    return identity.arch === 'x64' ? 'amd64' : 'arm64';
+  }
   // Each slice of the macOS universal binary is independently inspected below.
   return null;
 }
@@ -181,7 +184,8 @@ export function expectedGoarchForIdentity(identity) {
  * Throws when absent so identity generation cannot silently drop the field.
  */
 export function parseOpenApiInfoVersion(yamlText) {
-  const infoMatch = /^info:\n((?:[ \t]+\S.*\n?)+)/m.exec(yamlText);
+  const normalized = yamlText.replace(/\r\n?/g, '\n');
+  const infoMatch = /^info:\n((?:[ \t]+\S.*\n?)+)/m.exec(normalized);
   if (infoMatch !== null) {
     const versionMatch = /^[ \t]+version:[ \t]*['"]?([^'"\n]+?)['"]?[ \t]*$/m.exec(infoMatch[1]);
     if (versionMatch !== null) {

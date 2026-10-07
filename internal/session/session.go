@@ -837,7 +837,7 @@ func (s *Session) Start(command []string, workdir string, env []string, onMessag
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Dir = workdir
 	cmd.Env = append(os.Environ(), env...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setProcessGroup(cmd)
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
@@ -912,7 +912,7 @@ func terminateStartedCommand(cmd *exec.Cmd) {
 	}
 
 	pgid := cmd.Process.Pid
-	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	_ = killProcessGroup(pgid, syscall.SIGTERM)
 
 	done := make(chan struct{})
 	go func() {
@@ -928,7 +928,7 @@ func terminateStartedCommand(cmd *exec.Cmd) {
 	case <-timer.C:
 	}
 
-	_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	_ = killProcessGroup(pgid, syscall.SIGKILL)
 	<-done
 }
 
@@ -2249,7 +2249,7 @@ func (s *Session) Interrupt() error {
 		return nil
 	}
 	pgid := proc.Process.Pid
-	if err := syscall.Kill(-pgid, syscall.SIGINT); err != nil {
+	if err := killProcessGroup(pgid, syscall.SIGINT); err != nil {
 		return fmt.Errorf("sending SIGINT to session pgid %d: %w", pgid, err)
 	}
 	return nil
@@ -2306,7 +2306,7 @@ func (s *Session) Stop() error {
 	// SIGTERM the entire process group so child processes are also signaled.
 	// The process was started with Setpgid: true, so its PGID equals its PID.
 	pgid := proc.Process.Pid
-	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	_ = killProcessGroup(pgid, syscall.SIGTERM)
 	timer2 := time.NewTimer(5 * time.Second)
 	defer timer2.Stop()
 	select {
@@ -2316,7 +2316,7 @@ func (s *Session) Stop() error {
 	}
 
 	// SIGKILL the entire process group
-	_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	_ = killProcessGroup(pgid, syscall.SIGKILL)
 	<-s.done
 	return nil
 }
@@ -2549,13 +2549,13 @@ func (s *Session) escalateAfterResult(pid int, grace time.Duration) {
 		return
 	case <-time.After(grace):
 	}
-	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	_ = killProcessGroup(pid, syscall.SIGTERM)
 	select {
 	case <-s.done:
 		return
 	case <-time.After(grace):
 	}
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = killProcessGroup(pid, syscall.SIGKILL)
 }
 
 // Done returns a channel that is closed when the session exits.

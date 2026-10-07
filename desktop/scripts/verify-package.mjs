@@ -151,7 +151,8 @@ function verifyResources(resourcesDir, { electronExecutablePath, target }) {
   verifyExecutableTarget(electronExecutablePath, target, 'Electron executable');
 
   // 3. Bundled server binary: executable and matching the identity.
-  const binaryPath = join(resourcesDir, 'bin', 'agentico');
+  const binaryName = target.os === 'win32' ? 'agentico.exe' : 'agentico';
+  const binaryPath = join(resourcesDir, 'bin', binaryName);
   if (!existsSync(binaryPath) || !statSync(binaryPath).isFile()) {
     fail(`missing bundled server binary at ${binaryPath}`);
   }

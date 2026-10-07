@@ -55,7 +55,7 @@ func terminateProcessGroup(pid int) {
 	pgid := pid // Setpgid: true → PGID equals PID
 
 	// SIGTERM the entire process group so child processes are also signaled.
-	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	_ = killProcessGroup(pgid, syscall.SIGTERM)
 
 	// Poll for process exit (up to 5s).
 	deadline := time.After(5 * time.Second)
@@ -65,12 +65,11 @@ func terminateProcessGroup(pid int) {
 		select {
 		case <-deadline:
 			// Escalate: SIGKILL the entire process group.
-			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			_ = killProcessGroup(pgid, syscall.SIGKILL)
 			// Brief wait for SIGKILL to take effect, then try to reap.
 			time.Sleep(200 * time.Millisecond)
 			// Best-effort reap if we happen to be the parent.
-			var ws syscall.WaitStatus
-			_, _ = syscall.Wait4(pid, &ws, syscall.WNOHANG, nil)
+			_, _ = waitProcessNoHang(pid)
 			return
 		case <-ticker.C:
 			if !isProcessGroupAlive(pid) {
@@ -89,13 +88,12 @@ func isProcessGroupAlive(pgid int) bool {
 	// This removes the leader's zombie entry so the subsequent group-alive
 	// check does not get a false positive from a zombie leader while all
 	// real children have already exited.
-	var ws syscall.WaitStatus
-	_, _ = syscall.Wait4(pgid, &ws, syscall.WNOHANG, nil)
+	_, _ = waitProcessNoHang(pgid)
 
 	// Check if ANY process in the group is still alive. kill(-pgid, 0) sends
 	// a null signal to every member of the process group; it returns nil if at
 	// least one member exists, or ESRCH if the group is empty.
-	err := syscall.Kill(-pgid, 0)
+	err := killProcessGroup(pgid, 0)
 	return err == nil
 }
 

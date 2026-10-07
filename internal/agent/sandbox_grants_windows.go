@@ -1,3 +1,5 @@
+//go:build windows
+
 // Copyright 2026 DoorDash, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +14,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !unix && !windows
-
 package agent
 
-// pathWritableByUser conservatively reports true on platforms without the
-// verification sandbox, so escalation safety fails closed to the user gate.
-// The ladder never runs here: commands are already unsandboxed.
-func pathWritableByUser(string) bool {
-	return true
+import "os"
+
+func pathWritableByUser(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	info, err := os.Stat(dir)
+	return err == nil && info != nil
 }
